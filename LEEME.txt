@@ -1,0 +1,33 @@
+ANALISTA EUR/USD - CAPTURAS + API DE ANTHROPIC (+ TWELVE DATA OPCIONAL)
+====================================================
+Es una pagina web estatica (sin servidor ni base de datos).
+Todo corre en el navegador del usuario; la API key y el diario se guardan en su dispositivo.
+
+PUBLICAR (GitHub Pages, gratis, HTTPS):
+1. Crear repositorio publico y subir estos 5 archivos: index.html, manifest.webmanifest, sw.js, icon-192.png, icon-512.png
+2. Settings > Pages > Branch main > Save.
+3. Abrir https://USUARIO.github.io/REPO/ en Chrome del celular > menu > "Instalar aplicacion".
+   (Tambien funciona con Netlify Drop o Cloudflare Pages.)
+
+USO: AJUSTES > pegar API key de Anthropic (console.anthropic.com, con limite de gasto mensual).
+Luego ANALIZAR: subir Diario, H4, M30, llenar contexto y analizar.
+
+LOGICA: el modelo (claude-sonnet-5-5) lee las capturas. El codigo luego verifica por su cuenta
+(funcion post en index.html): coherencia de niveles segun direccion, recalculo de R:R real,
+minimo R:R 2 y confianza 60 (si no, NO_TRADE), rango de stop 8-45 pips, distancia al precio
+indicado por el usuario y calculo del lote. El DIARIO es manual (TP / SL / No entre) y alimenta
+win rate, expectativa en R y calibracion.
+
+AJUSTES RAPIDOS: constante CFG (modelo, minRR, minConf) y el texto SYSTEM en index.html.
+SEGURIDAD: la clave queda en localStorage del dispositivo: no cargarla en equipos ajenos.
+AVISO: herramienta informativa; no es asesoria financiera.
+
+TWELVE DATA (OPCIONAL, plan gratis, simbolo EUR/USD):
+- Crear cuenta en twelvedata.com y pegar la key en AJUSTES.
+- Con la key: al analizar trae velas M30 reales (precio actual, ATR14, rango 50 velas), se las pasa al
+  modelo para corregir niveles mal leidos y valida entrada/stop en multiplos de ATR.
+- Al abrir DIARIO o RENDIMIENTO resuelve solas las operaciones pendientes (TP / SL / no entro tras 48 velas;
+  si TP y SL caen en la misma vela se asume SL). Se puede marcar a mano igualmente.
+- Sin la key todo funciona igual, solo con capturas y resultados manuales.
+- NO se usa Finnhub: su calendario economico suele ser de pago; las noticias se escriben en el contexto.
+- Verificar con una prueba real que la API responde desde el navegador (CORS) con el plan del usuario.

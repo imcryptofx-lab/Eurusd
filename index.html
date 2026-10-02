@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b1220"><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon-192.png"><title>Analista EUR/USD</title>
+<style>
+:root{--bg:#0b1220;--card:#111c33;--line:#1e293b;--txt:#e2e8f0;--mut:#94a3b8;--acc:#38bdf8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.5 system-ui,sans-serif;padding-bottom:72px}
+.wrap{padding:14px;max-width:700px;margin:auto}h1{font-size:20px;margin:0 0 10px}.mut{color:var(--mut);font-size:13px}
+.card{background:var(--card);border-radius:12px;padding:14px;margin-bottom:10px}
+.btn{width:100%;background:var(--acc);color:#0b1220;border:0;border-radius:10px;padding:14px;font-weight:800;font-size:16px;margin-top:12px}
+.btn.alt{background:none;border:1px solid var(--acc);color:var(--acc);padding:11px;font-size:14px;margin-top:6px}.btn:disabled{opacity:.5}
+.sm{width:auto;padding:8px 12px;font-size:13px;margin:6px 6px 0 0}
+label{display:block;margin:10px 0 4px;color:var(--mut);font-size:13px}
+input,select,textarea{width:100%;background:var(--line);color:#fff;border:0;border-radius:8px;padding:11px;font:inherit}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.slot{display:flex;align-items:center;gap:10px;margin-top:8px}
+.slot img{width:70px;height:50px;object-fit:cover;border-radius:6px}.slot button{flex:1}
+.bias{font-size:34px;font-weight:800;margin:0}.LONG{color:#22c55e}.SHORT{color:#ef4444}.NO_TRADE{color:#eab308}
+.warn{border:1px solid #ca8a04}h3{margin:0 0 6px;font-size:15px}ul{margin:0;padding-left:18px}
+.row{display:flex;gap:10px;flex-wrap:wrap}.row>div{flex:1;min-width:90px}.big{font-size:18px;font-weight:700}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#0b1220;border-top:1px solid var(--line)}
+nav button{flex:1;background:none;border:0;color:#64748b;padding:16px 4px;font-weight:700;font-size:12px}nav button.on{color:var(--acc)}
+</style></head><body><div class="wrap">
+<h1>Analista EUR/USD</h1>
+<div id="v-an">
+ <div class="card"><h3>1. Capturas (en este orden)</h3>
+  <div class="slot"><img id="p0"><button class="btn alt" data-s="0">Diario</button></div>
+  <div class="slot"><img id="p1"><button class="btn alt" data-s="1">H4</button></div>
+  <div class="slot"><img id="p2"><button class="btn alt" data-s="2">M30</button></div>
+  <input type="file" id="file" accept="image/*" hidden>
+  <p class="mut">Mínimo 1. Ideal las 3, con precio y escala visibles.</p></div>
+ <div class="card"><h3>2. Contexto</h3>
+  <div class="g2"><div><label>Sesión</label><select id="ses"><option>Londres</option><option>Nueva York</option><option>Solapamiento Londres-NY</option><option>Asia</option></select></div>
+  <div><label>Hora local</label><input id="hora" placeholder="08:30"></div></div>
+  <div class="g2"><div><label>Precio actual aprox.</label><input id="precio" type="number" step="0.0001" inputmode="decimal" placeholder="1.0850"></div>
+  <div><label>Noticias hoy</label><input id="news" placeholder="ninguna / CPI 8:30"></div></div>
+  <label>Posición abierta</label><input id="pos" placeholder="Sin operaciones / LONG desde 1.0850, SL 1.0820">
+  <label>Mi opinión (opcional)</label><input id="op" placeholder="Creo que está en rango...">
+  <div class="g2"><div><label>Capital ($)</label><input id="cap" type="number" inputmode="decimal"></div>
+  <div><label>Riesgo por operación (%)</label><input id="risk" type="number" step="0.1" inputmode="decimal"></div></div>
+  <button class="btn" id="go">Analizar</button></div>
+ <div id="out"></div>
+</div>
+<div id="v-hi" hidden></div><div id="v-st" hidden></div>
+<div id="v-se" hidden><div class="card"><h3>Ajustes</h3>
+ <label>Anthropic API key (se guarda solo en este dispositivo)</label><input id="k1" type="password" placeholder="sk-ant-...">
+ <label>Twelve Data API key (opcional, gratis: precio real, ATR y resultados automáticos)</label><input id="k2" type="password">
+ <button class="btn" id="save">Guardar</button>
+ <p class="mut">Activa un límite de gasto mensual en tu cuenta de Anthropic. No compartas la app con tu clave cargada.</p>
+ <button class="btn alt" id="wipe">Borrar todos mis datos</button></div></div>
+</div>
+<nav><button id="t-an" class="on">ANALIZAR</button><button id="t-hi">DIARIO</button><button id="t-st">RENDIMIENTO</button><button id="t-se">AJUSTES</button></nav>
+<script>
+const $=id=>document.getElementById(id),L=localStorage;
+const esc=t=>String(t??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const CFG={model:"claude-sonnet-5-5",maxSide:1568,minRR:2,minConf:60,maxTokens:2200};
+const SYSTEM=`Eres un analista técnico institucional senior de forex especializado SOLO en EUR/USD. Recibirás de 1 a 3 capturas (Diario, H4, M30, en ese orden). Si una captura no es EUR/USD, avísalo y marca NO_TRADE.
+PROCESO: 1) LECTURA: confirma activo, timeframe y precio aproximado; si algo no se ve, dilo, no inventes datos. 2) TENDENCIA en el TF mayor: alcista/bajista/lateral, estructura (máximos/mínimos, BOS/CHoCH), medias si se ven; indica si Diario y H4 coinciden. 3) NIVELES CLAVE con números: soportes, resistencias, oferta/demanda, números redondos (1.0800, 1.0900...) y liquidez. 4) CONFIRMACIÓN en M30: velas, momentum (RSI/MACD si se ven), reacción en zonas. 5) CONFLUENCIAS a favor y en contra. 6) ESCENARIOS alcista/bajista/lateral con probabilidad (suman 100) y objetivo. 7) SETUP solo si hay confluencia clara y R:R mínimo ${CFG.minRR}: sesgo LONG/SHORT/NO_TRADE, entrada, stop loss (por estructura y ATR, nunca pegado al precio), take profit 1 y 2, y qué confirmación espero antes de entrar. Si la confianza es menor a ${CFG.minConf}% o las señales se contradicen: NO_TRADE y explica qué debe pasar (precio o evento) para volver a mirar. 8) INVALIDACIÓN: nivel o evento que anula el análisis. 9) RIESGOS: noticias de alto impacto, sesión, spreads.
+PERFIL EUR/USD: par más líquido; respeta bien soportes/resistencias. Motores: Fed, BCE, datos de EE.UU. (NFP, CPI, PIB), inflación eurozona, DXY. Mejor momento: apertura de Londres y solapamiento Londres-NY. Asia suele ser lateral y sus rangos se rompen en Londres. Recomienda no operar justo antes/después de noticias fuertes.
+REGLAS: sé honesto, ninguna proyección es certeza; usa solo lo visible en las capturas y el contexto dado; justifica la confianza con hechos concretos; si el usuario muestra impulsividad (revancha, sobreoperar, mover el stop) adviértelo. Usa precios con 5 decimales.
+Responde SOLO JSON válido, en español:
+{"assets":[{"symbol":str,"timeframe":str}],"htf_trend":"alcista|bajista|lateral","tf_aligned":bool,"key_levels":{"support":[num],"resistance":[num]},"confluences":[str],"against":[str],"scenarios":[{"name":str,"probability_pct":num,"target":num|null,"description":str}],"bias":"LONG|SHORT|NO_TRADE","setup":{"entry":num,"stop_loss":num,"take_profit":[num],"confirmation":str}|null,"confidence_pct":num,"revisit_when":str,"invalidation":str,"risk_notes":[str],"summary_es":str}`;
+async function candles(n){const r=await fetch(`https://api.twelvedata.com/time_series?symbol=${encodeURIComponent("EUR/USD")}&interval=30min&outputsize=${n}&timezone=UTC&apikey=${L.k2}`);
+ const d=await r.json();if(!d.values)throw new Error(d.message||"sin datos");return d.values.reverse().map(v=>({t:v.datetime,h:+v.high,l:+v.low,c:+v.close}))}
+async function resolveAll(){if(!L.k2)return;const a=get(),p=a.filter(x=>x.status==="pending");if(!p.length)return;
+ try{const cs=await candles(500);let ch=false;for(const s of p){const after=cs.filter(k=>Date.parse(k.t.replace(" ","T")+"Z")>=s.id);
+  const[st]=simulate({bias:s.bias,entry:s.entry,sl:s.sl,tp:s.tp},after);
+  if(st==="win"||st==="loss"||st==="expired"){s.status=st==="expired"?"skipped":st;s.auto=true;ch=true}}
+  if(ch)put(a)}catch(e){}}
+const files=[null,null,null],NAMES=["Diario","H4","M30"];let slot=0;
+const get=()=>JSON.parse(L.diary||"[]"),put=a=>L.diary=JSON.stringify(a.slice(0,300));
+["cap","risk"].forEach(k=>$(k).value=L[k]||(k==="risk"?"1":""));
+function tab(n){["an","hi","st","se"].forEach(x=>{$("v-"+x).hidden=x!==n;$("t-"+x).classList.toggle("on",x===n)});
+ if(n==="hi")hist();if(n==="st")stats();if(n==="se"){$("k1").value=L.k1||"";$("k2").value=L.k2||""}}
+["an","hi","st","se"].forEach(x=>$("t-"+x).onclick=()=>tab(x));
+$("save").onclick=()=>{L.k1=$("k1").value.trim();L.k2=$("k2").value.trim();alert("Guardado")};
+$("wipe").onclick=()=>{if(confirm("¿Borrar claves y diario?")){L.clear();location.reload()}};
+document.querySelectorAll("[data-s]").forEach(b=>b.onclick=()=>{slot=+b.dataset.s;$("file").click()});
+$("file").onchange=e=>{const f=e.target.files[0];if(!f)return;files[slot]=f;$("p"+slot).src=URL.createObjectURL(f);e.target.value=""};
+function prep(f){return new Promise((ok,no)=>{const im=new Image();im.onload=()=>{const k=Math.min(1,CFG.maxSide/Math.max(im.width,im.height)),c=document.createElement("canvas");
+ c.width=im.width*k;c.height=im.height*k;c.getContext("2d").drawImage(im,0,0,c.width,c.height);ok(c.toDataURL("image/jpeg",.88).split(",")[1])};
+ im.onerror=()=>no(new Error("Imagen no válida"));im.src=URL.createObjectURL(f)})}
+//<<PURE
+const PIP=1e4;
+function atr(c,p=14){const t=[];for(let i=1;i<c.length;i++)t.push(Math.max(c[i].h-c[i].l,Math.abs(c[i].h-c[i-1].c),Math.abs(c[i].l-c[i-1].c)));const x=t.slice(-p);return x.reduce((a,b)=>a+b,0)/(x.length||1)}
+function simulate(s,cs){const long=s.bias==="LONG",risk=Math.abs(s.entry-s.sl);if(!risk)return["expired"];let fill=false;
+ for(let i=0;i<cs.length;i++){const k=cs[i];if(!fill){if(i>=48)return["expired"];if(k.l<=s.entry&&s.entry<=k.h)fill=true;else continue}
+  let sl=long?k.l<=s.sl:k.h>=s.sl,tp=long?k.h>=s.tp:k.l<=s.tp;if(sl&&tp)tp=false;if(sl)return["loss"];if(tp)return["win"]}
+ return["open"]}
+function post(d,ctx){const w=[];d.warnings=w;const s=d.setup;
+ if(d.bias==="LONG"||d.bias==="SHORT"){
+  if(!s||[s.entry,s.stop_loss,(s.take_profit||[])[0]].some(v=>typeof v!=="number")){d.bias="NO_TRADE";d.setup=null;w.push("Setup incompleto: se anuló.")}
+  else{const L_=d.bias==="LONG",tp=s.take_profit[0];
+   if(L_?!(s.stop_loss<s.entry&&tp>s.entry):!(s.stop_loss>s.entry&&tp<s.entry)){d.bias="NO_TRADE";d.setup=null;w.push("Los niveles no son coherentes con la dirección: se anuló.")}
+   else{const risk=Math.abs(s.entry-s.stop_loss);s.risk_reward=+(Math.abs(tp-s.entry)/risk).toFixed(2);s.sl_pips=+(risk*PIP).toFixed(1);
+    if(s.risk_reward<CFG.minRR){d.bias="NO_TRADE";d.setup=null;w.push(`R:R real ${s.risk_reward} < ${CFG.minRR}: se anuló.`)}
+    else{if(s.sl_pips<8||s.sl_pips>45)w.push(`Stop de ${s.sl_pips} pips fuera del rango habitual intradía (8 a 45).`);
+     if(ctx.atr){const sa=risk/ctx.atr;if(sa<.5||sa>3)w.push(`Stop de ${sa.toFixed(1)} ATR (rango sano: 0.5 a 3).`);
+      if(Math.abs(s.entry-ctx.price)>1.5*ctx.atr)w.push("Entrada lejos del precio real (>1.5 ATR): nivel posiblemente mal leído.")}
+     else if(ctx.price&&Math.abs(s.entry-ctx.price)>.004)w.push("La entrada está a más de 40 pips del precio que indicaste: revisa la lectura.");
+     const cash=ctx.cap*ctx.risk/100;if(cash>0){s.risk_cash=+cash.toFixed(2);s.lots=Math.floor(cash/(s.sl_pips*10)*100)/100}}}}}
+ if(d.confidence_pct<CFG.minConf&&d.bias!=="NO_TRADE"){d.bias="NO_TRADE";d.setup=null;w.push(`Confianza ${d.confidence_pct}% < ${CFG.minConf}%: se anuló.`)}
+ return d}
+function metrics(a){const c=a.filter(x=>x.status==="win"||x.status==="loss"),n=c.length;if(!n)return null;
+ const wr=c.filter(x=>x.status==="win").length/n,ex=c.reduce((s,x)=>s+(x.status==="win"?x.rr:-1),0)/n,br=c.reduce((s,x)=>s+(x.conf/100-(x.status==="win"?1:0))**2,0)/n;
+ const bk=[[0,70],[70,80],[80,101]].map(([lo,hi])=>{const b=c.filter(x=>x.conf>=lo&&x.conf<hi);return b.length?{r:`${lo}-${Math.min(hi,100)}%`,n:b.length,said:b.reduce((s,x)=>s+x.conf,0)/b.length,real:100*b.filter(x=>x.status==="win").length/b.length}:null}).filter(Boolean);
+ return{n,wr,ex,br,bk}}
+//PURE>>
+$("go").onclick=async()=>{
+ if(!L.k1){alert("Primero guarda tu API key en AJUSTES");return tab("se")}
+ if(!files.some(Boolean))return alert("Sube al menos 1 captura");
+ $("go").disabled=true;$("go").textContent="Analizando…";
+ try{L.cap=$("cap").value;L.risk=$("risk").value;
+  const ctx={price:parseFloat($("precio").value)||null,cap:parseFloat($("cap").value)||0,risk:parseFloat($("risk").value)||1};
+  let real="",realFail=false;
+  if(L.k2){try{const cs=await candles(100);ctx.price=cs[cs.length-1].c;ctx.atr=atr(cs);const lo=Math.min(...cs.slice(-50).map(x=>x.l)),hi=Math.max(...cs.slice(-50).map(x=>x.h));
+   real=` DATOS REALES (M30): precio actual ${ctx.price.toFixed(5)}, ATR14 ${(ctx.atr*PIP).toFixed(1)} pips, rango de las últimas 50 velas ${lo.toFixed(5)}-${hi.toFixed(5)}. Úsalos para corregir cualquier nivel mal leído en las capturas.`;
+   $("precio").value=ctx.price.toFixed(5)}catch(e){realFail=true}}
+  const content=[];for(let i=0;i<3;i++)if(files[i]){content.push({type:"text",text:`Gráfico ${NAMES[i]}:`});content.push({type:"image",source:{type:"base64",media_type:"image/jpeg",data:await prep(files[i])}})}
+  content.push({type:"text",text:`EUR/USD. CONTEXTO: sesión ${$("ses").value}; hora local ${$("hora").value||"no indicada"}; precio actual aprox. ${$("precio").value||"no indicado"}; estilo intradía; noticias hoy: ${$("news").value||"ninguna"}; posición actual: ${$("pos").value||"sin operaciones"}; mi opinión: ${$("op").value||"ninguna"}; riesgo ${ctx.risk}%.${real} Analiza.`});
+  const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"content-type":"application/json","x-api-key":L.k1,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+   body:JSON.stringify({model:CFG.model,max_tokens:CFG.maxTokens,temperature:.2,system:SYSTEM,messages:[{role:"user",content}]})});
+  const j=await r.json();if(!r.ok)throw new Error(j.error?.message||r.status);
+  const t=j.content.map(b=>b.text||"").join("");let d;try{d=JSON.parse(t.slice(t.indexOf("{"),t.lastIndexOf("}")+1))}catch(e){throw new Error("Respuesta no válida, intenta de nuevo")}
+  post(d,ctx);if(realFail)d.warnings.push("No se pudieron obtener datos reales (revisa tu clave de Twelve Data): análisis solo con capturas.");d.disclaimer="Análisis informativo, no es asesoría financiera.";
+  const a=get(),s=d.setup;a.unshift({id:Date.now(),bias:d.bias,conf:d.confidence_pct,entry:s?.entry,sl:s?.stop_loss,tp:s?.take_profit?.[0],rr:s?.risk_reward,
+   status:s?"pending":"info",data:d});put(a);$("out").innerHTML=render(d)
+ }catch(e){$("out").innerHTML=`<div class="card warn">Error: ${esc(e.message)}</div>`}
+ $("go").disabled=false;$("go").textContent="Analizar"};
+const li=a=>(a||[]).map(x=>`<li>${esc(x)}</li>`).join("");
+function render(d){const s=d.setup;return `<div class="card"><p class="bias ${esc(d.bias)}">${esc(d.bias)}</p>
+ <div class="mut">Confianza ${esc(d.confidence_pct)}% · Tendencia: ${esc(d.htf_trend)} · Diario y H4 ${d.tf_aligned?"coinciden":"NO coinciden"}</div><p>${esc(d.summary_es)}</p></div>
+ ${s?`<div class="card"><h3>Setup</h3><div class="row"><div><div class="mut">Entrada</div><div class="big">${esc(s.entry)}</div></div>
+ <div><div class="mut">Stop (${esc(s.sl_pips)} pips)</div><div class="big SHORT">${esc(s.stop_loss)}</div></div><div><div class="mut">TP</div><div class="big LONG">${esc(s.take_profit.join(" / "))}</div></div>
+ <div><div class="mut">R:R</div><div class="big">${esc(s.risk_reward)}</div></div></div>
+ ${s.lots!=null?`<p><b>Lote sugerido: ${s.lots}</b> <span class="mut">(arriesgas $${s.risk_cash}; cálculo para cuenta en USD)</span></p>`:'<p class="mut">Escribe tu capital para calcular el lote.</p>'}
+ <p class="mut">Esperar: ${esc(s.confirmation)}</p></div>`:`<div class="card"><h3>Volver a mirar cuando</h3>${esc(d.revisit_when)}</div>`}
+ ${(d.warnings||[]).length?`<div class="card warn"><h3>Revisión automática</h3><ul>${li(d.warnings)}</ul></div>`:""}
+ <div class="card"><h3>Escenarios</h3><ul>${(d.scenarios||[]).map(x=>`<li><b>${esc(x.name)}</b> (${esc(x.probability_pct)}%)${x.target?" → "+esc(x.target):""}: ${esc(x.description)}</li>`).join("")}</ul></div>
+ <div class="card"><h3>Niveles</h3>Soporte: ${esc((d.key_levels?.support||[]).join(", "))}<br>Resistencia: ${esc((d.key_levels?.resistance||[]).join(", "))}</div>
+ <div class="card"><h3>A favor</h3><ul>${li(d.confluences)}</ul><h3 style="margin-top:8px">En contra</h3><ul>${li(d.against)}</ul></div>
+ <div class="card"><h3>Invalidación y riesgos</h3><p>${esc(d.invalidation)}</p><ul>${li(d.risk_notes)}</ul></div><div class="mut">${esc(d.disclaimer)}</div>`}
+const LBL={win:"✅ TP",loss:"❌ SL",pending:"⏳ pendiente",skipped:"No entré",info:"—"};
+async function hist(){await resolveAll();const a=get();$("v-hi").innerHTML=(a.length?a.map((s,i)=>`<div class="card"><b class="${esc(s.bias)}">${esc(s.bias)}</b> · ${esc(s.conf)}% · ${LBL[s.status]}${s.auto?" (auto)":""}
+ <div class="mut">${new Date(s.id).toLocaleString()}${s.entry?` · ${s.entry} / SL ${s.sl} / TP ${s.tp}`:""}</div>
+ <button class="btn alt sm" data-v="${i}">Ver</button>${s.status==="pending"?`<button class="btn alt sm" data-m="${i}:win">Toqué TP</button><button class="btn alt sm" data-m="${i}:loss">Toqué SL</button><button class="btn alt sm" data-m="${i}:skipped">No entré</button>`:""}</div>`).join(""):'<div class="card mut">Aún no hay análisis.</div>')
+ +(a.length?'<button class="btn alt" id="exp">Copiar diario (para pegar en Claude)</button>':"");
+ document.querySelectorAll("[data-v]").forEach(b=>b.onclick=()=>{$("out").innerHTML=render(a[b.dataset.v].data);tab("an")});
+ document.querySelectorAll("[data-m]").forEach(b=>b.onclick=()=>{const[i,st]=b.dataset.m.split(":");a[i].status=st;put(a);hist()});
+ if($("exp"))$("exp").onclick=()=>{const t="DIARIO EUR/USD\nfecha | sesgo | confianza | entrada | SL | TP | R:R | resultado\n"+a.map(s=>[new Date(s.id).toLocaleString(),s.bias,s.conf+"%",s.entry||"-",s.sl||"-",s.tp||"-",s.rr||"-",LBL[s.status]].join(" | ")).join("\n");
+  navigator.clipboard.writeText(t).then(()=>alert("Copiado"),()=>prompt("Copia este texto:",t))}}
+async function stats(){await resolveAll();const a=get(),m=metrics(a),p=a.filter(x=>x.status==="pending").length;
+ if(!m){$("v-st").innerHTML=`<div class="card mut">Aún no hay operaciones cerradas. Se resuelven solas con Twelve Data o márcalas tú en DIARIO. Pendientes: ${p}</div>`;return}
+ $("v-st").innerHTML=`<div class="card"><h3>Rendimiento real</h3><div class="row"><div><div class="mut">Cerradas</div><div class="big">${m.n}</div></div>
+ <div><div class="mut">Win rate</div><div class="big">${(m.wr*100).toFixed(1)}%</div></div><div><div class="mut">Expectativa</div><div class="big">${m.ex.toFixed(2)} R</div></div><div><div class="mut">Brier</div><div class="big">${m.br.toFixed(3)}</div></div></div></div>
+ <div class="card"><h3>Calibración (dijo vs acertó)</h3><ul>${m.bk.map(b=>`<li>${b.r} (${b.n}): dijo ${b.said.toFixed(0)}% → acertó ${b.real.toFixed(0)}%</li>`).join("")}</ul></div>
+ <div class="mut">${m.n<30?"Con menos de 30 operaciones cerradas los resultados no son concluyentes.":"Muestra suficiente para una primera lectura."} Pendientes: ${p}</div>`}
+if(!L.k1)tab("se");
+if("serviceWorker"in navigator&&location.protocol.startsWith("http"))navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script></body></html>
