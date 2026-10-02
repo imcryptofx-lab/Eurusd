@@ -1,0 +1,2 @@
+# Eurusd
+analizador eurusd ai
